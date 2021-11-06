@@ -1,0 +1,44 @@
+Data Dictionary for German Credit Case
+
+Information available from OpenML: https://www.openml.org/d/31
+
+Author: Dr. Hans Hofmann  
+Source: [UCI](https://archive.ics.uci.edu/ml/datasets/statlog+(german+credit+data)) - 1994    
+Please cite: [UCI](https://archive.ics.uci.edu/ml/citation_policy.html)
+
+German Credit dataset  
+This dataset classifies people described by a set of attributes as good or bad credit risks.
+
+This dataset comes with a cost matrix: 
+``` 
+      Good  Bad (predicted)  
+Good   0    1   (actual)  
+Bad    5    0  
+```
+
+It is worse to class a customer as good when they are bad (5), than it is to class a customer as bad when they are good (1).  
+
+### Attribute description  
+
+1. checking_status Status of existing checking account, in Deutsche Mark.  
+2. duration Duration in months  
+3. credit_history Credit history (credits taken, paid back duly, delays, critical accounts)  
+4. purpose Purpose of the credit (car, television,...)  
+5. credit_amount Credit amount  
+6. savings_status Status of savings account/bonds, in Deutsche Mark.  
+7. employment Present employment, in number of years.  
+8. installment_commitment Installment rate in percentage of disposable income  
+9. personal_status Personal status (married, single,...) and sex  
+10. other_parties Other debtors / guarantors  
+11. residence_since Present residence since X years  
+12. property_magnitude Property (e.g. real estate)  
+13. age Age in years  
+14. other_payment_plans Other installment plans (banks, stores)  
+15. housing Housing (rent, own,...)  
+16. existing_credits Number of existing credits at this bank  
+17. job Job  
+18. num_dependents Number of people being liable to provide maintenance for  
+19. own_telephone Telephone (yes,no)  
+20. foreign_worker Foreign worker (yes,no)
+21. class Credit classification (good or bad) response to be predicted
+

@@ -1,0 +1,356 @@
+---
+title: "Assign 3"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(farff) # for reading arff file
+library(cvTools) # explicit creation of folds for cross-validation
+library(ModelMetrics) # used for precision-recall evaluation of classifiers
+library(car) # for recode function
+```
+
+
+```{r}
+# optimal cutoff for predicting bad credit set as
+# (cost of false negative/cost of false positive) times
+# (prevalence of positive/prevalence of negative)
+# (1/5)*(.3/.7) = 0.086
+CUTOFF = 0.086
+COSTMATRIX = matrix(c(0,5,1,0), nrow = 2, ncol = 2, byrow = TRUE)
+
+credit = readARFF("dataset_31_credit-g.arff")
+# write to comma-delimited text for review in Excel
+write.csv(credit, file = "credit.csv", row.names = FALSE)
+
+# check structure of the data frame
+cat("\n\nStucture of initial credit data frame:\n")
+print(str(credit))
+head(credit)
+# quick summary of credit data
+cat("\n\nSummary of initial credit data frame:\n")
+print(summary(credit))
+
+# personal_status has level "female single" with no observations
+cat("\n\nProblems with personal_status, no single females:\n")
+print(table(credit$personal_status))
+# fix this prior to analysis
+credit$personal_status = factor(as.numeric(credit$personal_status),
+    levels = c(1,2,3,4), 
+    labels = c("male div/sep","female div/dep/mar","male single","male mar/wid"))
+
+cat("\n\nProblems with purpose, low- and no-frequency levels:\n")
+print(table(credit$purpose))
+```
+
+
+```{r}
+# keep first four classes: "new car", "used car", "furniture/equipment", "radio/tv"
+# keep "education" and "business" with new values 
+# add "retraining" to "education"
+# gather all other levels into "other"
+credit$purpose = recode(credit$purpose, '"new car" = "new car";
+    "used car" = "used car"; 
+    "furniture/equipment" = "furniture/equipment";
+    "radio/tv" = "radio/tv"; 
+    "education" = "education"; "retraining" = "education";
+    "business" = "business"; 
+    "domestic appliance" = "other"; "repairs" = "other"; "vacation" = "other"; 
+    "other" = "other" ',
+    levels = c("new car","used car","furniture/equipment","radio/tv", 
+    "education","business","other" ))
+
+# credit_amount is highly skewed... use log_credit_amount instead
+credit$log_credit_amount = log(credit$credit_amount)    
+
+# summary of transformed credit data
+cat("\n\nSummary of revised credit data frame:\n")
+print(summary(credit))
+hist(credit$log_credit_amount)
+```
+
+
+```{r}
+# logistic regression evaluated with cross-validation
+# include explanatory variables except foreign_worker
+# (only 37 of 100 cases are foreign workers)
+credit_model = "class ~ checking_status + duration + 
+    credit_history + purpose + log_credit_amount + savings_status + 
+    employment + installment_commitment + personal_status +        
+    other_parties + residence_since + property_magnitude +
+    age + other_payment_plans + housing + existing_credits +      
+    job + num_dependents + own_telephone" 
+
+set.seed(1)
+nfolds = 5
+folds = cvFolds(nrow(credit), K = nfolds) # creates list of indices
+
+baseprecision = rep(0, nfolds)  # precision with 0 cutoff
+baserecall = rep(0, nfolds)  # recall with  0 cutoff
+basef1Score = rep(0, nfolds)  # f1Score with 0 cutoff
+basecost = rep(0, nfolds)  # total cost with 0 cutoff
+ruleprecision = rep(0, nfolds)  # precision with CUTOFF rule
+rulerecall = rep(0, nfolds)  # recall with CUTOFF rule
+rulef1Score = rep(0, nfolds)  # f1Score with CUTOFF rule
+rulecost = rep(0, nfolds)  # total cost with CUTOFF rule
+```
+
+
+```{r}
+
+for (ifold in seq(nfolds)) {
+    cat("\n\nSUMMARY FOR IFOLD:", ifold) # checking in development
+    print(summary(credit[(folds$which == ifold),]))
+    # train model on all folds except ifold
+    train = credit[(folds$which != ifold), ]
+    test = credit[(folds$which == ifold),]
+    credit_fit = glm(credit_model, family = binomial,
+        data = train)
+    # evaluate on fold ifold    
+    credit_predict = predict.glm(credit_fit, 
+        newdata = test, type = "response") 
+    baseprecision[ifold] = ppv(as.numeric(test$class)-1, 
+        credit_predict, cutoff = 0.5)  
+    baserecall[ifold] = recall(as.numeric(test$class)-1, 
+        credit_predict, cutoff = 0.5) 
+    basef1Score[ifold] = f1Score(as.numeric(test$class)-1, 
+        credit_predict, cutoff = 0.5) 
+    basecost[ifold] = sum(
+        confusionMatrix(as.numeric(test$class)-1,
+        credit_predict) * COSTMATRIX)  
+    ruleprecision[ifold] = ppv(as.numeric(test$class)-1, 
+        credit_predict, cutoff = CUTOFF)  
+    rulerecall[ifold] = recall(as.numeric(test$class)-1, 
+        credit_predict, cutoff = CUTOFF) 
+    rulef1Score[ifold] = f1Score(as.numeric(test$class)-1, 
+        credit_predict, cutoff = CUTOFF)
+    rulecost[ifold] = sum(
+        confusionMatrix(as.numeric(test$class)-1, 
+            credit_predict,cutoff=CUTOFF) * COSTMATRIX)                                    
+} 
+cvbaseline = data.frame(baseprecision, baserecall, basef1Score, basecost,
+    ruleprecision, rulerecall, rulef1Score, rulecost)
+
+cat("\n\nCross-validation summary across folds:\n")
+print(round(cvbaseline, digits = 3))
+cat("\n\nCross-validation baseline results under cost cutoff rules:")
+cat("\n    F1 Score: ", round(mean(cvbaseline$rulef1Score), digits = 3))
+cat("\n    Average cost per fold: ", 
+    round(mean(cvbaseline$rulecost), digits = 2), "\n")
+
+```
+
+
+```{r}
+library(tidyverse)
+# prepare data for input to autoencoder work
+design_matrix = model.matrix(as.formula(credit_model), data = credit)
+design_data_frame = as.data.frame(design_matrix)[,-1]  # dropping the intercept term
+# normalize the data 
+minmaxnorm <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
+minmax_data_frame <- lapply(design_data_frame, FUN = minmaxnorm)
+
+cat("\n\nStructure of minmax_data_frame for input to autoencoding work:\n")
+print(str(minmax_data_frame))
+dim(minmax_data_frame)
+minmax_data_frame <- bind_cols(minmax_data_frame)
+str(design_data_frame)
+```
+
+
+```{r}
+library(corrplot)
+library(dplyr)
+library(psych)
+
+
+corrplot(cor(minmax_data_frame))
+
+prcomp(minmax_data_frame)
+
+fa.parallel(minmax_data_frame[,-1],fa="pc",n.iter=100,show.legend=FALSE,main="Scree plot wtih parallel analysis")
+scree(minmax_data_frame)
+names(minmax_data_frame)
+```
+
+
+```{r}
+pc1<-principal(minmax_data_frame,nfactors=17,rotate="none",scores=TRUE)
+pc1
+scores <- as.data.frame(pc1$scores)
+head(scores)
+```
+
+
+```{r}
+#make this example reproducible
+set.seed(1)
+library(pls)
+
+
+
+names(minmax_data_frame) <- c('checking_status0_X_200', 'checking_status_200' , 'checking_statusno_checking' , 'duration' , 'credit_historyall_paid' , 'credit_historyexisting_paid' , 'credit_historydelayed_previously' ,  'credit_historycritical_other_existing_credit' ,
+ 'purposeused_car' , 'purposefurniture_equipment' , 'purposeradio_tv' , 'purposeeducation' , 'purposebusiness' ,
+  'purposeother' , 'log_credit_amount' , 'savings_status100_X_500' , 'savings_status500_X_1000' , 'savings_status_1000' ,         'savings_statusno_known_savings' ,   'employment_1' , 'employment1_X_4' , 'employment4_X_7' , 'employment_7' ,
+  'installment_commitment' , 'personal_statusfemale_div_dep_mar' ,  'personal_statusmale_single' , 'personal_statusmale_mar_wid','other_partiesco_applicant' ,  'other_partiesguarantor' ,  'residence_since' , 'property_magnitudelife_insurance' ,
+  'property_magnitudecar' , 'property_magnitudeno_known_property' , 'age' , 'other_payment_plansstores' ,
+  'other_payment_plansnone' , 'housingown' , 'housingforfree' , 'existing_credits' , 'jobunskilled_resident' ,
+   'jobskilled' , 'jobhigh_qualif_self_emp_mgmt' , 'num_dependents' , 'own_telephoneyes')
+credit_df <- data.frame(credit$class)
+library("plyr") 
+minmax_data_frame <- merge(credit_df, minmax_data_frame)
+head(credit)                
+pcr_model = ("credit.class ~ checking_status0_X_200 + checking_status_200 + checking_statusno_checking + duration + credit_historyall_paid + credit_historyexisting_paid + credit_historydelayed_previously +  credit_historycritical_other_existing_credit +
+ purposeused_car + purposefurniture_equipment + purposeradio_tv + purposeeducation + purposebusiness +
+  purposeother + log_credit_amount + savings_status100_X_500 + savings_status500_X_1000 + savings_status_1000 +         savings_statusno_known_savings +   employment_1 + employment1_X_4 + employment4_X_7 + employment_7 +
+  installment_commitment + personal_statusfemale_div_dep_mar +  personal_statusmale_single + personal_statusmale_mar_wid + other_partiesco_applicant +  other_partiesguarantor +  residence_since + property_magnitudelife_insurance +
+  property_magnitudecar + property_magnitudeno_known_property + age + other_payment_plansstores +
+  other_payment_plansnone + housingown + housingforfree + existing_credits + jobunskilled_resident +
+   jobskilled + jobhigh_qualif_self_emp_mgmt + num_dependents + own_telephoneyes")
+
+names(minmax_data_frame)
+head(minmax_data_frame)
+pcr_model
+```
+
+
+```{r}
+pcr_data_frame <- merge(credit_df, scores)
+head(pcr_data_frame)
+pcr_data_frame <- pcr_data_frame[complete.cases(pcr_data_frame), ]
+pcr_data_frame$credit.class <- as.numeric(pcr_data_frame$credit.class)
+#fit PCR model
+model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17,  data=pcr_data_frame)
+summary(model)
+
+?pcr
+```
+
+
+```{r}
+
+pcr_baseprecision = rep(0, nfolds)  # precision with 0 cutoff
+pcr_baserecall = rep(0, nfolds)  # recall with  0 cutoff
+pcr_basef1Score = rep(0, nfolds)  # f1Score with 0 cutoff
+pcr_basecost = rep(0, nfolds)  # total cost with 0 cutoff
+pcr_ruleprecision = rep(0, nfolds)  # precision with CUTOFF rule
+pcr_rulerecall = rep(0, nfolds)  # recall with CUTOFF rule
+pcr_rulef1Score = rep(0, nfolds)  # f1Score with CUTOFF rule
+pcr_rulecost = rep(0, nfolds)  # total cost with CUTOFF rule
+
+
+```
+
+
+```{r}
+#options(error=recover)
+
+library(sna)
+for (ifold in seq(nfolds)) {
+    cat("\n\nSUMMARY FOR IFOLD:", ifold) # checking in development
+    print(summary(pcr_data_frame[(folds$which == ifold),]))
+    # train model on all folds except ifold
+    pcr_train = pcr_data_frame[(folds$which != ifold), ]
+    pcr_test = pcr_data_frame[(folds$which == ifold),]
+    model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17, data=pcr_train)
+     # evaluate on fold ifold    
+    pcr_predict = predict.glm(model, 
+        newdata = pcr_test, type = "response") 
+    pcr_baseprecision[ifold] = ppv(as.numeric(pcr_test$credit.class)-1, 
+        pcr_predict, cutoff = 0.5)  
+    pcr_baserecall[ifold] = recall(as.numeric(pcr_test$credit.class)-1, 
+        pcr_predict, cutoff = 0.5) 
+    pcr_basef1Score[ifold] = f1Score(as.numeric(pcr_test$credit.class)-1, 
+        pcr_predict, cutoff = 0.5) 
+    pcr_basecost[ifold] = sum(
+        confusionMatrix(as.numeric(pcr_test$credit.class)-1,
+        pcr_predict) * COSTMATRIX)  
+    pcr_ruleprecision[ifold] = ppv(as.numeric(pcr_test$credit.class)-1, 
+        pcr_predict, cutoff = CUTOFF)  
+    pcr_rulerecall[ifold] = recall(as.numeric(pcr_test$credit.class)-1, 
+        pcr_predict, cutoff = CUTOFF) 
+    pcr_rulef1Score[ifold] = f1Score(as.numeric(pcr_test$credit.class)-1, 
+        pcr_predict, cutoff = CUTOFF)
+    pcr_rulecost[ifold] = sum(
+        confusionMatrix(as.numeric(pcr_test$credit.class)-1, 
+            pcr_predict,cutoff=CUTOFF) * COSTMATRIX)                                    
+} 
+pcr_cvbaseline = data.frame(pcr_baseprecision, pcr_baserecall, pcr_basef1Score, pcr_basecost,
+    pcr_ruleprecision, pcr_rulerecall, pcr_rulef1Score, pcr_rulecost)
+
+cat("\n\nCross-validation summary across folds:\n")
+print(round(pcr_cvbaseline, digits = 3))
+cat("\n\nCross-validation baseline results under cost cutoff rules:")
+cat("\n    F1 Score: ", round(mean(pcr_cvbaseline$pcr_rulef1Score), digits = 3))
+cat("\n    Average cost per fold: ", 
+    round(mean(pcr_cvbaseline$pcr_rulecost), digits = 2), "\n")
+```
+
+
+```{r}
+library(ggplot2)
+library(keras)
+library(reticulate)
+library(tensorflow)
+install_tensorflow()
+install_keras()
+library(tidyverse)
+head(minmax_data_frame)
+use_condaenv("r-tensorflow")
+split_ind <- minmax_data_frame$credit.class %>% caret::createDataPartition(p = 0.8,list = FALSE)
+tf$constant("Hellow Tensorflow")
+train <- minmax_data_frame[split_ind,]
+test <- minmax_data_frame[-split_ind,]
+
+head(train)
+dim(train)
+
+train_X <- train[,2:45] %>% as.matrix()
+
+train_y <- train[,1] %>% 
+  keras::to_categorical()
+
+test_X <- test[,2:45] %>% as.matrix()
+```
+
+
+```{r}
+```
+
+
+```{r}
+
+input_layer <- 
+  layer_input(shape = c(4)) 
+
+encoder <- 
+  input_layer %>% 
+  layer_dense(units = 150, activation = "relu") %>% 
+  layer_batch_normalization() %>% 
+  layer_dropout(rate = 0.2) %>% 
+  layer_dense(units = 50, activation = "relu") %>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 25, activation = "relu") %>%
+  layer_dense(units = 2) # 2 dimensions for the output layer
+
+decoder <- 
+  encoder %>% 
+  layer_dense(units = 150, activation = "relu") %>% 
+  layer_dropout(rate = 0.2) %>% 
+  layer_dense(units = 50, activation = "relu") %>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 25, activation = "relu") %>%
+  layer_dense(units = 4) # 4 dimensions for the original 4 variables
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
