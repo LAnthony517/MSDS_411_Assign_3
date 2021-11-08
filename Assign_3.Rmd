@@ -12,6 +12,7 @@ library(farff) # for reading arff file
 library(cvTools) # explicit creation of folds for cross-validation
 library(ModelMetrics) # used for precision-recall evaluation of classifiers
 library(car) # for recode function
+
 ```
 
 
@@ -31,10 +32,14 @@ write.csv(credit, file = "credit.csv", row.names = FALSE)
 cat("\n\nStucture of initial credit data frame:\n")
 print(str(credit))
 head(credit)
+
 # quick summary of credit data
 cat("\n\nSummary of initial credit data frame:\n")
 print(summary(credit))
+```
 
+
+```{r}
 # personal_status has level "female single" with no observations
 cat("\n\nProblems with personal_status, no single females:\n")
 print(table(credit$personal_status))
@@ -159,6 +164,8 @@ print(str(minmax_data_frame))
 dim(minmax_data_frame)
 minmax_data_frame <- bind_cols(minmax_data_frame)
 str(design_data_frame)
+
+
 ```
 
 
@@ -204,17 +211,17 @@ credit_df <- data.frame(credit$class)
 library("plyr") 
 minmax_data_frame <- merge(credit_df, minmax_data_frame)
 head(credit)                
-pcr_model = ("credit.class ~ checking_status0_X_200 + checking_status_200 + checking_statusno_checking + duration + credit_historyall_paid + credit_historyexisting_paid + credit_historydelayed_previously +  credit_historycritical_other_existing_credit +
- purposeused_car + purposefurniture_equipment + purposeradio_tv + purposeeducation + purposebusiness +
-  purposeother + log_credit_amount + savings_status100_X_500 + savings_status500_X_1000 + savings_status_1000 +         savings_statusno_known_savings +   employment_1 + employment1_X_4 + employment4_X_7 + employment_7 +
-  installment_commitment + personal_statusfemale_div_dep_mar +  personal_statusmale_single + personal_statusmale_mar_wid + other_partiesco_applicant +  other_partiesguarantor +  residence_since + property_magnitudelife_insurance +
-  property_magnitudecar + property_magnitudeno_known_property + age + other_payment_plansstores +
-  other_payment_plansnone + housingown + housingforfree + existing_credits + jobunskilled_resident +
-   jobskilled + jobhigh_qualif_self_emp_mgmt + num_dependents + own_telephoneyes")
+#3pcr_model = ("credit.class ~ checking_status0_X_200 + checking_status_200 + checking_statusno_checking + duration + credit_historyall_paid + credit_historyexisting_paid + credit_historydelayed_previously +  credit_historycritical_other_existing_credit +
+# purposeused_car + purposefurniture_equipment + purposeradio_tv + purposeeducation + purposebusiness +
+ # purposeother + log_credit_amount + savings_status100_X_500 + savings_status500_X_1000 + savings_status_1000 +         savings_statusno_known_savings +   employment_1 + employment1_X_4 + employment4_X_7 + employment_7 +
+ # installment_commitment + personal_statusfemale_div_dep_mar +  personal_statusmale_single + personal_statusmale_mar_wid + other_partiesco_applicant +  other_partiesguarantor +  residence_since + property_magnitudelife_insurance +
+#  property_magnitudecar + property_magnitudeno_known_property + age + other_payment_plansstores +
+ # other_payment_plansnone + housingown + housingforfree + existing_credits + jobunskilled_resident +
+  # jobskilled + jobhigh_qualif_self_emp_mgmt + num_dependents + own_telephoneyes")
 
 names(minmax_data_frame)
 head(minmax_data_frame)
-pcr_model
+
 ```
 
 
@@ -222,11 +229,19 @@ pcr_model
 pcr_data_frame <- merge(credit_df, scores)
 head(pcr_data_frame)
 pcr_data_frame <- pcr_data_frame[complete.cases(pcr_data_frame), ]
-pcr_data_frame$credit.class <- as.numeric(pcr_data_frame$credit.class)
+#pcr_data_frame$credit.class <- as.numeric(pcr_data_frame$credit.class)
 #fit PCR model
-model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17,  data=pcr_data_frame)
-summary(model)
+pcr_data_frame$credit.class
+str(pcr_data_frame)
 
+contrasts(as.factor(pcr_data_frame$credit.class))
+
+
+
+model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17, 
+             family = binomial,  data=pcr_data_frame)
+summary(model)
+?glm
 ?pcr
 ```
 
@@ -256,7 +271,7 @@ for (ifold in seq(nfolds)) {
     # train model on all folds except ifold
     pcr_train = pcr_data_frame[(folds$which != ifold), ]
     pcr_test = pcr_data_frame[(folds$which == ifold),]
-    model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17, data=pcr_train)
+    model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17,  family = binomial, data=pcr_train)
      # evaluate on fold ifold    
     pcr_predict = predict.glm(model, 
         newdata = pcr_test, type = "response") 
@@ -288,6 +303,10 @@ cat("\n\nCross-validation baseline results under cost cutoff rules:")
 cat("\n    F1 Score: ", round(mean(pcr_cvbaseline$pcr_rulef1Score), digits = 3))
 cat("\n    Average cost per fold: ", 
     round(mean(pcr_cvbaseline$pcr_rulecost), digits = 2), "\n")
+
+#contrasts(as.factor(pcr_train$credit.class))
+
+
 ```
 
 
@@ -297,8 +316,12 @@ library(keras)
 library(reticulate)
 library(tensorflow)
 install_tensorflow()
-install_keras()
+install_keras(version = "2.3",
+  tensorflow = "default",
+  extra_packages = c("tensorflow-hub"))
 library(tidyverse)
+use_condaenv("r-tensorflow")
+
 head(minmax_data_frame)
 use_condaenv("r-tensorflow")
 split_ind <- minmax_data_frame$credit.class %>% caret::createDataPartition(p = 0.8,list = FALSE)
@@ -311,11 +334,11 @@ dim(train)
 
 train_X <- train[,2:45] %>% as.matrix()
 
-train_y <- train[,1] %>% 
-  keras::to_categorical()
+train_y <- train[,1] 
 
 test_X <- test[,2:45] %>% as.matrix()
 ```
+
 
 
 ```{r}
@@ -326,6 +349,7 @@ test_X <- test[,2:45] %>% as.matrix()
 
 input_layer <- 
   layer_input(shape = c(4)) 
+
 
 encoder <- 
   input_layer %>% 
