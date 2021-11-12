@@ -8,6 +8,7 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 
 ```{r}
+Sys.setenv("RETICULATE_PYTHON" = "C:/Python38")
 library(farff) # for reading arff file
 library(cvTools) # explicit creation of folds for cross-validation
 library(ModelMetrics) # used for precision-recall evaluation of classifiers
@@ -146,7 +147,7 @@ cat("\n\nCross-validation baseline results under cost cutoff rules:")
 cat("\n    F1 Score: ", round(mean(cvbaseline$rulef1Score), digits = 3))
 cat("\n    Average cost per fold: ", 
     round(mean(cvbaseline$rulecost), digits = 2), "\n")
-
+COSTMATRIX
 ```
 
 
@@ -163,7 +164,7 @@ cat("\n\nStructure of minmax_data_frame for input to autoencoding work:\n")
 print(str(minmax_data_frame))
 dim(minmax_data_frame)
 minmax_data_frame <- bind_cols(minmax_data_frame)
-str(design_data_frame)
+dim(minmax_data_frame)
 
 
 ```
@@ -190,6 +191,12 @@ pc1<-principal(minmax_data_frame,nfactors=17,rotate="none",scores=TRUE)
 pc1
 scores <- as.data.frame(pc1$scores)
 head(scores)
+
+### getting df size
+sort( sapply(ls(),function(x){object.size(get(x))})) 
+
+format(object.size(scores), units = "auto")
+
 ```
 
 
@@ -208,8 +215,11 @@ names(minmax_data_frame) <- c('checking_status0_X_200', 'checking_status_200' , 
   'other_payment_plansnone' , 'housingown' , 'housingforfree' , 'existing_credits' , 'jobunskilled_resident' ,
    'jobskilled' , 'jobhigh_qualif_self_emp_mgmt' , 'num_dependents' , 'own_telephoneyes')
 credit_df <- data.frame(credit$class)
+head(credit_df)
 library("plyr") 
-minmax_data_frame <- merge(credit_df, minmax_data_frame)
+minmax_data_frame <- merge(credit_df, minmax_data_frame,by.x = 0, by.y = 0)
+minmax_data_frame <-  subset(minmax_data_frame, select = -c(Row.names))
+?merge
 head(credit)                
 #3pcr_model = ("credit.class ~ checking_status0_X_200 + checking_status_200 + checking_statusno_checking + duration + credit_historyall_paid + credit_historyexisting_paid + credit_historydelayed_previously +  credit_historycritical_other_existing_credit +
 # purposeused_car + purposefurniture_equipment + purposeradio_tv + purposeeducation + purposebusiness +
@@ -219,14 +229,16 @@ head(credit)
  # other_payment_plansnone + housingown + housingforfree + existing_credits + jobunskilled_resident +
   # jobskilled + jobhigh_qualif_self_emp_mgmt + num_dependents + own_telephoneyes")
 
-names(minmax_data_frame)
-head(minmax_data_frame)
+names(minmax_data_frame_merge)
+dim(minmax_data_frame)
 
 ```
 
 
 ```{r}
-pcr_data_frame <- merge(credit_df, scores)
+gc()
+pcr_data_frame <- merge(minmax_data_frame, scores,by.x = 0, by.y = 0)
+pcr_data_frame <-  subset(pcr_data_frame, select = -c(Row.names))
 head(pcr_data_frame)
 pcr_data_frame <- pcr_data_frame[complete.cases(pcr_data_frame), ]
 #pcr_data_frame$credit.class <- as.numeric(pcr_data_frame$credit.class)
@@ -238,7 +250,13 @@ contrasts(as.factor(pcr_data_frame$credit.class))
 
 
 
-model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17, 
+model <- glm(credit.class ~ checking_status0_X_200 + checking_status_200 + checking_statusno_checking + duration + credit_historyall_paid + credit_historyexisting_paid + credit_historydelayed_previously +  credit_historycritical_other_existing_credit +
+ purposeused_car + purposefurniture_equipment + purposeradio_tv + purposeeducation + purposebusiness +
+  purposeother + log_credit_amount + savings_status100_X_500 + savings_status500_X_1000 + savings_status_1000 +         savings_statusno_known_savings +   employment_1 + employment1_X_4 + employment4_X_7 + employment_7 +
+  installment_commitment + personal_statusfemale_div_dep_mar +  personal_statusmale_single + personal_statusmale_mar_wid+other_partiesco_applicant +  other_partiesguarantor +  residence_since + property_magnitudelife_insurance +
+  property_magnitudecar + property_magnitudeno_known_property + age + other_payment_plansstores +
+  other_payment_plansnone + housingown + housingforfree + existing_credits + jobunskilled_resident +
+   jobskilled + jobhigh_qualif_self_emp_mgmt + num_dependents + own_telephoneyes + PC1 + PC2 + PC3 + PC4 +  PC5 + PC6 + PC7 + PC8 +  PC9 + PC10 + PC11 + PC12 +  PC13 + PC14 + PC15 + PC16 +  PC17, 
              family = binomial,  data=pcr_data_frame)
 summary(model)
 ?glm
@@ -271,7 +289,13 @@ for (ifold in seq(nfolds)) {
     # train model on all folds except ifold
     pcr_train = pcr_data_frame[(folds$which != ifold), ]
     pcr_test = pcr_data_frame[(folds$which == ifold),]
-    model <- glm(credit.class ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17,  family = binomial, data=pcr_train)
+    model <- glm(credit.class ~ checking_status0_X_200 + checking_status_200 + checking_statusno_checking + duration + credit_historyall_paid + credit_historyexisting_paid + credit_historydelayed_previously +  credit_historycritical_other_existing_credit +
+ purposeused_car + purposefurniture_equipment + purposeradio_tv + purposeeducation + purposebusiness +
+  purposeother + log_credit_amount + savings_status100_X_500 + savings_status500_X_1000 + savings_status_1000 +         savings_statusno_known_savings +   employment_1 + employment1_X_4 + employment4_X_7 + employment_7 +
+  installment_commitment + personal_statusfemale_div_dep_mar +  personal_statusmale_single + personal_statusmale_mar_wid+other_partiesco_applicant +  other_partiesguarantor +  residence_since + property_magnitudelife_insurance +
+  property_magnitudecar + property_magnitudeno_known_property + age + other_payment_plansstores +
+  other_payment_plansnone + housingown + housingforfree + existing_credits + jobunskilled_resident +
+   jobskilled + jobhigh_qualif_self_emp_mgmt + num_dependents + own_telephoneyes + PC1 + PC2 + PC3 + PC4 +  PC5 + PC6 + PC7 + PC8 +  PC9 + PC10 + PC11 + PC12 +  PC13 + PC14 + PC15 + PC16 +  PC17 ,  family = binomial, data=pcr_train)
      # evaluate on fold ifold    
     pcr_predict = predict.glm(model, 
         newdata = pcr_test, type = "response") 
@@ -311,21 +335,18 @@ cat("\n    Average cost per fold: ",
 
 
 ```{r}
+#write.csv(minmax_data_frame,'assign3_minmax.csv')
 library(ggplot2)
-library(keras)
-library(reticulate)
-library(tensorflow)
-install_tensorflow()
-install_keras(version = "2.3",
-  tensorflow = "default",
-  extra_packages = c("tensorflow-hub"))
+
+
+
 library(tidyverse)
-use_condaenv("r-tensorflow")
+#use_condaenv("r-tensorflow")
 
 head(minmax_data_frame)
-use_condaenv("r-tensorflow")
+
 split_ind <- minmax_data_frame$credit.class %>% caret::createDataPartition(p = 0.8,list = FALSE)
-tf$constant("Hellow Tensorflow")
+
 train <- minmax_data_frame[split_ind,]
 test <- minmax_data_frame[-split_ind,]
 
@@ -334,41 +355,106 @@ dim(train)
 
 train_X <- train[,2:45] %>% as.matrix()
 
-train_y <- train[,1] 
+train_y <- train[,1]
 
 test_X <- test[,2:45] %>% as.matrix()
+dim(test_X)
+test_y <- test[,1]
+write.csv(train_X,'train_X.csv')
+write.csv(train_y,'train_y.csv')
+write.csv(test_X,'test_X.csv')
+write.csv(test_y,'test_y.csv')
+
 ```
 
 
 
 ```{r}
+ae_train <- read.csv('ae_train.csv')
+ae_test <- read.csv('ae_test.csv')
+head(ae_train)
+
+
+ae_test <- merge(credit_df, ae_test,by.x = 0, by.y = 0)
+ae_test <-  subset(ae_test, select = -c(Row.names, X))
+head(ae_test)
+
+ae_train_data_frame <- merge(credit_df, ae_train,by.x = 0, by.y = 0)
+ae_train_data_frame <-  subset(ae_train_data_frame, select = -c(Row.names, X))
+#ae_test <-  subset(ae_test, select = -c(X))
+contrasts(as.factor(ae_train_data_frame$credit.class))
+head(ae_train_data_frame)
+head(ae_test)
+ae_df <- rbind(ae_train_data_frame, ae_test)
+dim(ae_df)
+```
+
+
+```{r}
+model <- glm(credit.class ~ X0 + X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12+ X13 + X14 + X15 + X16 + X17 + X18 + X19 + X20 + 
+               X21 + X22 + X23 + X24 + X25 + X26 + X27 + X28 + X29 + X30 + X31 + X32 + X33 + X34 + X35 + X36 + X37 + X38 + X39 + X40 + X41 + X42 + X43 ,
+             family = binomial,  data=ae_train_data_frame)
+
+
+summary(model)
 ```
 
 
 ```{r}
 
-input_layer <- 
-  layer_input(shape = c(4)) 
+ae_baseprecision = rep(0, nfolds)  # precision with 0 cutoff
+ae_baserecall = rep(0, nfolds)  # recall with  0 cutoff
+ae_basef1Score = rep(0, nfolds)  # f1Score with 0 cutoff
+ae_basecost = rep(0, nfolds)  # total cost with 0 cutoff
+ae_ruleprecision = rep(0, nfolds)  # precision with CUTOFF rule
+ae_rulerecall = rep(0, nfolds)  # recall with CUTOFF rule
+ae_rulef1Score = rep(0, nfolds)  # f1Score with CUTOFF rule
+ae_rulecost = rep(0, nfolds)  # total cost with CUTOFF rule
+
+```
 
 
-encoder <- 
-  input_layer %>% 
-  layer_dense(units = 150, activation = "relu") %>% 
-  layer_batch_normalization() %>% 
-  layer_dropout(rate = 0.2) %>% 
-  layer_dense(units = 50, activation = "relu") %>%
-  layer_dropout(rate = 0.1) %>%
-  layer_dense(units = 25, activation = "relu") %>%
-  layer_dense(units = 2) # 2 dimensions for the output layer
+```{r}
+for (ifold in seq(nfolds)) {
+    cat("\n\nSUMMARY FOR IFOLD:", ifold) # checking in development
+    print(summary(ae_df[(folds$which == ifold),]))
+    # train model on all folds except ifold
+    ae_train = ae_df[(folds$which != ifold), ]
+    ae_test = ae_df[(folds$which == ifold),]
+    model <- glm(credit.class ~  X0 + X1 + X2 + X3 + X4 + X5 + X6 + X7 + X8 + X9 + X10 + X11 + X12+ X13 + X14 + X15 + X16 + X17 + X18 + X19 + X20 +  X21 + X22 + X23 + X24 + X25 + X26 + X27 + X28 + X29 + X30 + X31 + X32 + X33 + X34 + X35 + X36 + X37 + X38 + X39 + X40 + X41 + X42 + X43 ,  family = binomial, data=ae_train)
+     # evaluate on fold ifold    
+    ae_predict = predict.glm(model, 
+        newdata = ae_test, type = "response") 
+    ae_baseprecision[ifold] = ppv(as.numeric(ae_test$credit.class)-1, 
+        ae_predict, cutoff = 0.5)  
+    ae_baserecall[ifold] = recall(as.numeric(ae_test$credit.class)-1, 
+        ae_predict, cutoff = 0.5) 
+    ae_basef1Score[ifold] = f1Score(as.numeric(ae_test$credit.class)-1, 
+        ae_predict, cutoff = 0.5) 
+    ae_basecost[ifold] = sum(
+        confusionMatrix(as.numeric(ae_test$credit.class)-1,
+        ae_predict) * COSTMATRIX)  
+    ae_ruleprecision[ifold] = ppv(as.numeric(ae_test$credit.class)-1, 
+        ae_predict, cutoff = CUTOFF)  
+    ae_rulerecall[ifold] = recall(as.numeric(ae_test$credit.class)-1, 
+        ae_predict, cutoff = CUTOFF) 
+    ae_rulef1Score[ifold] = f1Score(as.numeric(ae_test$credit.class)-1, 
+        ae_predict, cutoff = CUTOFF)
+    ae_rulecost[ifold] = sum(
+        confusionMatrix(as.numeric(ae_test$credit.class)-1, 
+            ae_predict,cutoff=CUTOFF) * COSTMATRIX)                                    
+} 
+ae_cvbaseline = data.frame(ae_baseprecision, ae_baserecall, ae_basef1Score, ae_basecost,
+    ae_ruleprecision, ae_rulerecall, ae_rulef1Score, ae_rulecost)
 
-decoder <- 
-  encoder %>% 
-  layer_dense(units = 150, activation = "relu") %>% 
-  layer_dropout(rate = 0.2) %>% 
-  layer_dense(units = 50, activation = "relu") %>%
-  layer_dropout(rate = 0.1) %>%
-  layer_dense(units = 25, activation = "relu") %>%
-  layer_dense(units = 4) # 4 dimensions for the original 4 variables
+cat("\n\nCross-validation summary across folds:\n")
+print(round(ae_cvbaseline, digits = 3))
+cat("\n\nCross-validation baseline results under cost cutoff rules:")
+cat("\n    F1 Score: ", round(mean(ae_cvbaseline$ae_rulef1Score), digits = 3))
+cat("\n    Average cost per fold: ", 
+    round(mean(ae_cvbaseline$ae_rulecost), digits = 2), "\n")
+
+#contrasts(as.factor(pcr_train$credit.class))
 
 
 ```
